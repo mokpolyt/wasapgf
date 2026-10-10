@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChatWave — Messages</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--bg:#0b141a;--panel:#111b21;--panel2:#202c33;--border:#26343d;--text:#e9edef;--muted:#8696a0;--green:#00a884;--out:#005c4b;--hover:#202c33;--danger:#ff6b6b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,sans-serif;height:100vh;overflow:hidden}
+button,input,textarea{font:inherit}button{cursor:pointer}
+.app{height:100dvh;display:grid;grid-template-columns:360px minmax(0,1fr);max-width:1600px;margin:auto;background:var(--panel)}
+.sidebar{border-right:1px solid var(--border);display:flex;flex-direction:column;min-width:0;background:var(--panel)}
+.topbar{height:76px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:var(--panel)}
+.brand{font-size:23px;font-weight:700;letter-spacing:-.8px}.brand span{color:var(--green)}
+.top-actions{display:flex;gap:10px}.icon-btn{border:0;background:transparent;color:var(--muted);width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-size:20px}.icon-btn:hover{background:var(--panel2);color:var(--text)}
+.search-wrap{padding:8px 14px 14px}.search{width:100%;border:0;outline:0;border-radius:10px;background:var(--panel2);color:var(--text);padding:13px 15px 13px 42px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' fill='none' stroke='%238696a0' stroke-width='2' viewBox='0 0 24 24'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m16 16 4 4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:14px center}
+.chat-list{overflow-y:auto;flex:1}.chat-row{width:100%;display:flex;align-items:center;gap:13px;padding:13px 16px;border:0;background:transparent;text-align:left;color:inherit;min-height:82px;border-bottom:1px solid rgba(134,150,160,.08)}.chat-row:hover,.chat-row.active{background:var(--hover)}.avatar{width:49px;height:49px;flex:0 0 49px;border-radius:50%;display:grid;place-items:center;color:white;font-size:16px;font-weight:700;background:linear-gradient(135deg,#128c7e,#3c6e71);overflow:hidden}.avatar img{width:100%;height:100%;object-fit:cover}.chat-meta{flex:1;min-width:0}.chat-line{display:flex;justify-content:space-between;gap:8px;align-items:center}.chat-name{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.chat-date{font-size:11px;color:var(--muted);white-space:nowrap}.chat-preview{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:7px}.empty-list{padding:30px 20px;color:var(--muted);text-align:center;font-size:14px}
+.main{display:flex;flex-direction:column;min-width:0;background:#0b141a;position:relative}.welcome{height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;color:var(--muted);padding:30px}.welcome .hero-icon{font-size:64px;margin-bottom:20px}.welcome h1{font-size:28px;font-weight:500;color:var(--text);margin:0 0 10px}.welcome p{max-width:400px;line-height:1.7;font-size:14px}
+.conversation{display:none;height:100%;min-height:0;flex-direction:column}.conversation.show{display:flex}.chat-header{height:76px;display:flex;align-items:center;padding:0 20px;gap:12px;background:var(--panel);border-bottom:1px solid var(--border)}.chat-header .avatar{width:43px;height:43px;flex-basis:43px}.header-info{flex:1;min-width:0}.header-name{font-weight:600;font-size:16px}.header-status{color:var(--muted);font-size:12px;margin-top:4px}.header-actions{display:flex;gap:6px}.back-btn{display:none}
+.messages{flex:1;overflow-y:auto;padding:24px clamp(14px,4vw,58px);display:flex;flex-direction:column;gap:9px;background-color:#0b141a;background-image:radial-gradient(rgba(255,255,255,.025) 1px,transparent 1px);background-size:18px 18px}
+.day-label{align-self:center;font-size:11px;color:#d1d7db;background:#182229;padding:7px 12px;border-radius:8px;margin:4px 0 8px}
+.message{max-width:min(78%,580px);padding:10px 11px 7px;border-radius:9px;position:relative;box-shadow:0 1px 1px rgba(0,0,0,.14);overflow-wrap:anywhere}.message.incoming{align-self:flex-start;background:#202c33;border-top-left-radius:2px}.message.outgoing{align-self:flex-end;background:var(--out);border-top-right-radius:2px}.message-text{font-size:14px;line-height:1.48;white-space:pre-wrap;padding-right:8px}.message-footer{display:flex;align-items:center;justify-content:flex-end;gap:7px;margin-top:5px;color:#a8b6bc;font-size:10px}.outgoing .message-footer{color:#a6d9ce}.message-tools{position:absolute;top:3px;right:4px;opacity:0;transition:opacity .15s}.message:hover .message-tools,.message:focus-within .message-tools{opacity:1}.delete-btn{border:0;border-radius:5px;background:rgba(0,0,0,.3);color:#ffd0d0;font-size:11px;padding:5px 7px}.delete-btn:hover{background:#8f3030;color:white}
+.composer{padding:14px 20px;background:var(--panel);display:flex;align-items:flex-end;gap:12px;border-top:1px solid var(--border)}.composer textarea{resize:none;min-height:44px;max-height:130px;flex:1;border:0;outline:0;background:var(--panel2);color:var(--text);border-radius:10px;padding:13px 15px;line-height:1.4}.send-btn{height:44px;width:44px;border:0;border-radius:50%;background:var(--green);color:white;font-size:18px;display:grid;place-items:center}.send-btn:disabled{opacity:.4;cursor:not-allowed}
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}.modal-backdrop.open{display:flex}.modal{width:min(420px,100%);background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 20px 60px #0007}.modal h2{margin:0 0 8px;font-size:20px}.modal p{color:var(--muted);font-size:13px;line-height:1.6;margin:0 0 18px}.field{display:block;width:100%;padding:12px 13px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);outline:0;margin:9px 0}.primary-btn{border:0;border-radius:9px;background:var(--green);color:white;font-weight:600;padding:12px 16px;width:100%;margin-top:8px}.secondary-btn{border:1px solid var(--border);border-radius:9px;background:transparent;color:var(--text);padding:10px 14px}.modal-actions{display:flex;gap:10px;margin-top:16px}.modal-actions button{flex:1}.status-line{font-size:12px;color:var(--muted);margin-top:12px;line-height:1.5}.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#26343d;color:white;padding:11px 16px;border-radius:10px;font-size:13px;z-index:40;display:none;max-width:90%;text-align:center}.toast.show{display:block}
+@media(max-width:760px){.app{display:block}.sidebar{height:100dvh;border-right:0}.main{display:none;height:100dvh}.app.chat-open .sidebar{display:none}.app.chat-open .main{display:flex}.topbar{height:68px;padding:0 16px}.brand{font-size:22px}.chat-row{min-height:78px;padding:12px 16px}.chat-header{height:68px;padding:0 12px}.back-btn{display:grid}.messages{padding:16px 12px}.message{max-width:88%}.composer{padding:10px;gap:8px}.composer textarea{min-height:42px}.welcome{display:none}}
+@media(min-width:761px){.back-btn{display:none!important}}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="sidebar">
+    <header class="topbar">
+      <div class="brand">Chat<span>Wave</span></div>
+      <div class="top-actions">
+        <button class="icon-btn" id="newChatBtn" title="New conversation" aria-label="New conversation">＋</button>
+        <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings">⚙</button>
+      </div>
+    </header>
+    <div class="search-wrap"><input id="searchInput" class="search" placeholder="Search conversations…" autocomplete="off"></div>
+    <div class="chat-list" id="chatList"></div>
+  </aside>
+  <main class="main">
+    <section class="welcome" id="welcome">
+      <div class="hero-icon">◉</div><h1>Keep your conversations close</h1>
+      <p>Select a conversation to read messages. This lightweight chat interface is inspired by WhatsApp, with a clean layout and no bottom navigation menu.</p>
+    </section>
+    <section class="conversation" id="conversation">
+      <header class="chat-header">
+        <button class="icon-btn back-btn" id="backBtn" aria-label="Back to conversations">←</button>
+        <div class="avatar" id="activeAvatar">?</div>
+        <div class="header-info"><div class="header-name" id="activeName"></div><div class="header-status" id="activeStatus">Conversation</div></div>
+        <div class="header-actions"><button class="icon-btn" id="clearChatBtn" title="Delete all messages in this conversation" aria-label="Delete all messages">⌫</button></div>
+      </header>
+      <div class="messages" id="messages"></div>
+      <form class="composer" id="messageForm">
+        <textarea id="messageInput" rows="1" placeholder="Type a message…" aria-label="Type a message"></textarea>
+        <button class="send-btn" type="submit" id="sendBtn" aria-label="Send message">➤</button>
+      </form>
+    </section>
+  </main>
+</div>
+
+<div class="modal-backdrop" id="settingsModal">
+  <div class="modal">
+    <h2>Supabase connection</h2>
+    <p>Connect a Supabase project to sync conversations and messages. Without a configuration, this demo saves data in this browser only.</p>
+    <input class="field" id="supabaseUrl" placeholder="https://nuzigytcmwqwjzufosxo.supabase.co" autocomplete="url">
+    <input class="field" id="supabaseKey" placeholder="sb_publishable_QCQN5gFX7HnDBSPWe1TsRQ_4GJmzVrJ">
+    <input class="field" id="authEmail" placeholder="Account email (for cloud sync)" type="email" autocomplete="email">
+    <input class="field" id="authPassword" placeholder="Password" type="password" autocomplete="current-password">
+    <div class="modal-actions"><button class="secondary-btn" id="signOutBtn">Sign out</button><button class="primary-btn" id="connectBtn">Connect / Sign in</button></div>
+    <div class="status-line" id="connectionStatus">Local demo mode is active.</div>
+    <button class="secondary-btn" id="closeSettingsBtn" style="width:100%;margin-top:10px">Close</button>
+  </div>
+</div>
+<div class="modal-backdrop" id="confirmModal">
+  <div class="modal">
+    <h2 id="confirmTitle">Delete message?</h2><p id="confirmText">This action cannot be undone.</p>
+    <div class="modal-actions"><button class="secondary-btn" id="cancelDeleteBtn">Cancel</button><button class="primary-btn" id="confirmDeleteBtn" style="background:#d94c4c">Delete</button></div>
+  </div>
+</div>
+<div class="modal-backdrop" id="newChatModal">
+  <div class="modal"><h2>New conversation</h2><p>Create a contact in your chat list.</p>
+    <input class="field" id="newChatName" placeholder="Contact name">
+    <input class="field" id="newChatPreview" placeholder="Optional first message">
+    <div class="modal-actions"><button class="secondary-btn" id="cancelNewChatBtn">Cancel</button><button class="primary-btn" id="createChatBtn">Create</button></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const LS_KEY = 'chatwave-demo-v1';
+const seed = [
+ {id:'c1',name:'Ibuk Siraman',avatar:'IS',color:'#8d415f',date:'10/7/26',messages:[{id:'m1',text:'Yo gur nek mbg prei Le medun',time:'8:32 PM',side:'incoming'}]},
+ {id:'c2',name:'Tahira R Amelia',avatar:'TA',color:'#96734f',date:'10/7/26',messages:[
+  {id:'m2',text:'Kemarin pas jam berangkat ke Jakarta, trus si Ridlo langsung kabur ilang kontak ke ijum',time:'2:34 PM',side:'incoming'},
+  {id:'m3',text:'terakhir bulan apa itu mas ridlo kekantor. bilang mo resign dr kerjaannya . ga tau skrg',time:'2:36 PM',side:'outgoing'},
+  {id:'m4',text:"Skrang dia kerja di D'Paragon kantornya Maguwo. Yg nyediain apartemen, kostel, kos elit itu",time:'2:40 PM',side:'incoming'},
+  {id:'m5',text:'Anakku masih kokoh di ranking 1',time:'9:39 AM',side:'outgoing'},
+  {id:'m6',text:'Yeaayyyyy, ujian tengah semester mas Bowo??',time:'10:15 AM',side:'incoming'},
+  {id:'m7',text:'iya',time:'10:15 AM',side:'outgoing'}]},
+ {id:'c3',name:'Triiiii',avatar:'TR',color:'#d13c96',date:'10/6/26',messages:[{id:'m8',text:'Kami belum sempat memproses pesanmu. Nanti kami kabari ya.',time:'4:12 PM',side:'incoming'}]},
+ {id:'c4',name:'Bulik Ninik',avatar:'BN',color:'#b7a74a',date:'10/5/26',messages:[{id:'m9',text:'Jd mau ikut tapak tilas besok?',time:'11:08 AM',side:'incoming'},{id:'m10',text:'👍',time:'11:12 AM',side:'outgoing'}]},
+ {id:'c5',name:'Aqua Galon Bu Ndari Ndari',avatar:'AN',color:'#a45d83',date:'10/3/26',messages:[{id:'m11',text:'sama sama bu',time:'3:15 PM',side:'incoming'}]},
+ {id:'c6',name:'+62 813-9959-8543',avatar:'i',color:'#e8e8e8',date:'9/30/26',messages:[{id:'m12',text:'Pelanggan yang terhormat, Terima kasih telah menghubungi kami.',time:'9:12 AM',side:'incoming'}]},
+ {id:'c7',name:'Telkom Indibiz',avatar:'TI',color:'#e8e8e8',date:'9/30/26',messages:[{id:'m13',text:'Pelanggan Yth, Terima kasih telah menggunakan layanan kami.',time:'8:51 AM',side:'incoming'}]},
+ {id:'c8',name:'Agustino Rahmat',avatar:'AR',color:'#745b4b',date:'9/30/26',messages:[{id:'m14',text:'Oke, nanti saya kabari lagi.',time:'7:30 PM',side:'incoming'}]},
+ {id:'c9',name:'Keluarga',avatar:'KL',color:'#4c8d7d',date:'9/29/26',messages:[{id:'m15',text:'Jangan lupa kumpul hari Minggu ya.',time:'6:15 PM',side:'incoming'}]},
+ {id:'c10',name:'Bowo',avatar:'BW',color:'#6b70ad',date:'9/28/26',messages:[{id:'m16',text:'Nanti pulang jam berapa?',time:'5:04 PM',side:'incoming'}]},
+ {id:'c11',name:'Grup Sekolah',avatar:'GS',color:'#477e9a',date:'9/27/26',messages:[{id:'m17',text:'Info ujian sudah dibagikan di grup.',time:'1:20 PM',side:'incoming'}]},
+ {id:'c12',name:'Bu Rina',avatar:'BR',color:'#a86b42',date:'9/26/26',messages:[{id:'m18',text:'Terima kasih banyak ya.',time:'10:45 AM',side:'incoming'}]}
+];
+let chats = loadLocal(), activeId = null, supabase = null, user = null, cloudMode = false, pendingDelete = null, refreshTimer = null, cloudChannel = null, applyingRemote = false;
+function loadLocal(){try{const x=JSON.parse(localStorage.getItem(LS_KEY));return Array.isArray(x)&&x.length?x:structuredClone(seed)}catch{return structuredClone(seed)}}
+function saveLocal(){localStorage.setItem(LS_KEY,JSON.stringify(chats))}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function initials(name){return name.split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase()}
+function latest(chat){return chat.messages?.[chat.messages.length-1]}
+function showToast(s){$('toast').textContent=s;$('toast').classList.add('show');setTimeout(()=>$('toast').classList.remove('show'),2600)}
+function avatarHtml(chat){return `<div class="avatar" style="background:${esc(chat.color||'#128c7e')}">${esc(chat.avatar||initials(chat.name))}</div>`}
+function renderList(){
+ const q=$('searchInput').value.trim().toLowerCase();
+ const filtered=chats.filter(c=>c.name.toLowerCase().includes(q)||(latest(c)?.text||'').toLowerCase().includes(q));
+ $('chatList').innerHTML=filtered.length?filtered.map(c=>{const m=latest(c);return `<button class="chat-row ${c.id===activeId?'active':''}" data-chat="${esc(c.id)}">${avatarHtml(c)}<div class="chat-meta"><div class="chat-line"><div class="chat-name">${esc(c.name)}</div><div class="chat-date">${esc(m?.time||c.date||'')}</div></div><div class="chat-preview">${m?esc(m.text):'<i>No messages</i>'}</div></div></button>`}).join(''):'<div class="empty-list">No conversations found.</div>';
+ document.querySelectorAll('[data-chat]').forEach(el=>el.addEventListener('click',()=>openChat(el.dataset.chat)));
+}
+function openChat(id){activeId=id;const c=chats.find(x=>x.id===id);if(!c)return;$('welcome').style.display='none';$('conversation').classList.add('show');$('activeAvatar').textContent=c.avatar||initials(c.name);$('activeAvatar').style.background=c.color||'#128c7e';$('activeName').textContent=c.name;$('activeStatus').textContent=cloudMode?'Synced conversation':'Conversation';$('app').classList.add('chat-open');renderList();renderMessages();$('messageInput').focus()}
+function renderMessages(){
+ const c=chats.find(x=>x.id===activeId);if(!c)return;
+ $('messages').innerHTML=`<div class="day-label">Messages</div>`+(c.messages||[]).map(m=>`<article class="message ${m.side==='outgoing'?'outgoing':'incoming'}" data-message="${esc(m.id)}"><div class="message-text">${esc(m.text)}</div><div class="message-tools"><button class="delete-btn" data-delete="${esc(m.id)}" title="Delete this message">Delete</button></div><div class="message-footer"><span>${esc(m.time||'')}</span>${m.side==='outgoing'?'<span>✓✓</span>':''}</div></article>`).join('');
+ $('messages').scrollTop=$('messages').scrollHeight;
+ document.querySelectorAll('[data-delete]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();askDelete({type:'message',chatId:activeId,messageId:b.dataset.delete})}));
+}
+function persist(){saveLocal();renderList();if(activeId)renderMessages();if(cloudMode && !applyingRemote)syncAll().catch(e=>{console.error(e);showToast('Cloud sync failed. Your local copy is still saved.')})}
+function nowTime(){return new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}
+function makeId(){return 'id_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8)}
+$('searchInput').addEventListener('input',renderList);
+$('messageForm').addEventListener('submit',e=>{e.preventDefault();const text=$('messageInput').value.trim();if(!text||!activeId)return;const c=chats.find(x=>x.id===activeId);c.messages.push({id:makeId(),text,time:nowTime(),side:'outgoing'});$('messageInput').value='';$('messageInput').style.height='auto';persist()});
+$('messageInput').addEventListener('input',()=>{const el=$('messageInput');el.style.height='auto';el.style.height=Math.min(el.scrollHeight,130)+'px'});
+$('backBtn').addEventListener('click',()=>{$('app').classList.remove('chat-open');activeId=null;renderList()});
+function askDelete(action){pendingDelete=action;if(action.type==='message'){$('confirmTitle').textContent='Delete this message?';$('confirmText').textContent='This message will be permanently removed from this conversation.'}else{$('confirmTitle').textContent='Delete all messages?';$('confirmText').textContent='All messages in this conversation will be removed. The contact will remain in your list.'}$('confirmModal').classList.add('open')}
+$('cancelDeleteBtn').addEventListener('click',()=>{$('confirmModal').classList.remove('open');pendingDelete=null});
+$('confirmDeleteBtn').addEventListener('click',async()=>{if(!pendingDelete)return;const a=pendingDelete,c=chats.find(x=>x.id===a.chatId);if(c){if(a.type==='message')c.messages=c.messages.filter(m=>m.id!==a.messageId);else c.messages=[];persist();showToast(a.type==='message'?'Message deleted':'Conversation messages cleared')}pendingDelete=null;$('confirmModal').classList.remove('open')});
+$('clearChatBtn').addEventListener('click',()=>{if(activeId)askDelete({type:'clear',chatId:activeId})});
+$('newChatBtn').addEventListener('click',()=>$('newChatModal').classList.add('open'));
+$('cancelNewChatBtn').addEventListener('click',()=>$('newChatModal').classList.remove('open'));
+$('createChatBtn').addEventListener('click',()=>{const name=$('newChatName').value.trim();if(!name){$('newChatName').focus();return}const first=$('newChatPreview').value.trim();const c={id:makeId(),name,avatar:initials(name),color:'#128c7e',date:new Date().toLocaleDateString(),messages:first?[{id:makeId(),text:first,time:nowTime(),side:'incoming'}]:[]};chats.unshift(c);$('newChatName').value='';$('newChatPreview').value='';$('newChatModal').classList.remove('open');persist();openChat(c.id)});
+$('settingsBtn').addEventListener('click',()=>{$('settingsModal').classList.add('open');$('supabaseUrl').value=localStorage.getItem('chatwave-supabase-url')||'';$('supabaseKey').value=localStorage.getItem('chatwave-supabase-key')||'';$('connectionStatus').textContent=cloudMode?`Connected as ${user?.email||'user'}.`:'Local demo mode is active.'});
+$('closeSettingsBtn').addEventListener('click',()=>$('settingsModal').classList.remove('open'));
+async function syncAll(){
+ if(!cloudMode||!user)return;
+ // Replace the current user's cloud snapshot transactionally at the application level.
+ const {error}=await supabase.from('chatwave_snapshots').upsert({user_id:user.id,payload:chats,updated_at:new Date().toISOString()},{onConflict:'user_id'});
+ if(error)throw error;
+}
+async function loadCloud(){
+ const {data,error}=await supabase.from('chatwave_snapshots').select('payload').eq('user_id',user.id).maybeSingle();
+ if(error)throw error;
+ if(data?.payload&&Array.isArray(data.payload)&&data.payload.length){chats=data.payload;saveLocal()}else await syncAll();
+}
+function subscribeCloud(){
+ if(!cloudMode || !supabase || !user) return;
+ if(cloudChannel) supabase.removeChannel(cloudChannel);
+ cloudChannel = supabase.channel('chatwave-snapshot-'+user.id)
+  .on('postgres_changes',{event:'UPDATE',schema:'public',table:'chatwave_snapshots',filter:'user_id=eq.'+user.id},payload=>{
+    const remote = payload.new?.payload;
+    if(!Array.isArray(remote)) return;
+    applyingRemote = true;
+    chats = remote;
+    saveLocal();
+    renderList();
+    if(activeId && !chats.some(c=>c.id===activeId)) { activeId=null; $('conversation').classList.remove('show'); $('welcome').style.display='flex'; }
+    if(activeId) openChat(activeId);
+    applyingRemote = false;
+    showToast('Conversations synced from another device');
+  })
+  .subscribe(status=>{ if(status==='CHANNEL_ERROR') console.warn('Supabase Realtime subscription failed'); });
+}
+$('connectBtn').addEventListener('click',async()=>{
+ const url=$('supabaseUrl').value.trim(),key=$('supabaseKey').value.trim(),email=$('authEmail').value.trim(),password=$('authPassword').value;
+ if(!url||!key||!email||!password){$('connectionStatus').textContent='Enter the project URL, publishable/anon key, email, and password.';return}
+ try{
+  $('connectionStatus').textContent='Connecting…';
+  localStorage.setItem('chatwave-supabase-url',url);localStorage.setItem('chatwave-supabase-key',key);
+  supabase=window.supabase.createClient(url,key);
+  let res=await supabase.auth.signInWithPassword({email,password});
+  if(res.error){const signup=await supabase.auth.signUp({email,password});if(signup.error)throw signup.error;if(!signup.data.session){$('connectionStatus').textContent='Account created. Check your email to confirm it, then sign in here.';return}res=signup}
+  user=res.data.user;if(!user)throw new Error('Could not authenticate. Check your credentials.');
+  cloudMode=true;await loadCloud();subscribeCloud();$('connectionStatus').textContent=`Connected and synced as ${user.email||'user'}.`;if(activeId)openChat(activeId);renderList();showToast('Supabase connected');setTimeout(()=>$('settingsModal').classList.remove('open'),800);
+ }catch(err){console.error(err);cloudMode=false;$('connectionStatus').textContent=err.message||'Connection failed. Check your settings and SQL setup.'}
+});
+$('signOutBtn').addEventListener('click',async()=>{if(supabase){if(cloudChannel)await supabase.removeChannel(cloudChannel);cloudChannel=null;await supabase.auth.signOut()}cloudMode=false;user=null;$('connectionStatus').textContent='Signed out. Local demo mode is active.';showToast('Signed out of cloud sync')});
+$('confirmModal').addEventListener('click',e=>{if(e.target===$('confirmModal')){$('confirmModal').classList.remove('open');pendingDelete=null}});
+$('newChatModal').addEventListener('click',e=>{if(e.target===$('newChatModal'))$('newChatModal').classList.remove('open')});
+renderList();
+})();
+</script>
+</body>
+</html>
