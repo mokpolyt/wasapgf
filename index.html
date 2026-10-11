@@ -37,7 +37,6 @@ button,input,textarea{font:inherit}button{cursor:pointer}
       <div class="brand">Chat<span>Wave</span></div>
       <div class="top-actions">
         <button class="icon-btn" id="newChatBtn" title="New conversation" aria-label="New conversation">＋</button>
-        <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings">⚙</button>
       </div>
     </header>
     <div class="search-wrap"><input id="searchInput" class="search" placeholder="Search conversations…" autocomplete="off"></div>
@@ -46,7 +45,7 @@ button,input,textarea{font:inherit}button{cursor:pointer}
   <main class="main">
     <section class="welcome" id="welcome">
       <div class="hero-icon">◉</div><h1>Keep your conversations close</h1>
-      <p>Select a conversation to read messages. This lightweight chat interface is inspired by WhatsApp, with a clean layout and no bottom navigation menu.</p>
+      <p>Select a conversation to read messages. Everyone shares the same conversations — no login needed, and anyone can add a chat.</p>
     </section>
     <section class="conversation" id="conversation">
       <header class="chat-header">
@@ -64,19 +63,6 @@ button,input,textarea{font:inherit}button{cursor:pointer}
   </main>
 </div>
 
-<div class="modal-backdrop" id="settingsModal">
-  <div class="modal">
-    <h2>Supabase connection</h2>
-    <p>Connect a Supabase project to sync conversations and messages. Without a configuration, this demo saves data in this browser only.</p>
-    <input class="field" id="supabaseUrl" placeholder="https://nuzigytcmwqwjzufosxo.supabase.co" autocomplete="url">
-    <input class="field" id="supabaseKey" placeholder="sb_publishable_QCQN5gFX7HnDBSPWe1TsRQ_4GJmzVrJ">
-    <input class="field" id="authEmail" placeholder="Account email (for cloud sync)" type="email" autocomplete="email">
-    <input class="field" id="authPassword" placeholder="Password" type="password" autocomplete="current-password">
-    <div class="modal-actions"><button class="secondary-btn" id="signOutBtn">Sign out</button><button class="primary-btn" id="connectBtn">Connect / Sign in</button></div>
-    <div class="status-line" id="connectionStatus">Local demo mode is active.</div>
-    <button class="secondary-btn" id="closeSettingsBtn" style="width:100%;margin-top:10px">Close</button>
-  </div>
-</div>
 <div class="modal-backdrop" id="confirmModal">
   <div class="modal">
     <h2 id="confirmTitle">Delete message?</h2><p id="confirmText">This action cannot be undone.</p>
@@ -108,7 +94,10 @@ button,input,textarea{font:inherit}button{cursor:pointer}
 <script>
 (() => {
 const $ = id => document.getElementById(id);
-const LS_KEY = 'chatwave-demo-v1';
+const SUPABASE_URL='https://nuzigytcmwqwjzufosxo.supabase.co';
+const SUPABASE_KEY='sb_publishable_QCQN5gFX7HnDBSPWe1TsRQ_4GJmzVrJ';
+const CACHE_KEY='chatwave-public-cache-v1', CID_KEY='chatwave-client-id';
+const sb = window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const seed = [
  {id:'c1',name:'Ibuk Siraman',avatar:'IS',color:'#8d415f',date:'10/7/26',messages:[{id:'m1',text:'Yo gur nek mbg prei Le medun',time:'8:32 PM',side:'incoming'}]},
  {id:'c2',name:'Tahira R Amelia',avatar:'TA',color:'#96734f',date:'10/7/26',messages:[
@@ -129,68 +118,120 @@ const seed = [
  {id:'c11',name:'Grup Sekolah',avatar:'GS',color:'#477e9a',date:'9/27/26',messages:[{id:'m17',text:'Info ujian sudah dibagikan di grup.',time:'1:20 PM',side:'incoming'}]},
  {id:'c12',name:'Bu Rina',avatar:'BR',color:'#a86b42',date:'9/26/26',messages:[{id:'m18',text:'Terima kasih banyak ya.',time:'10:45 AM',side:'incoming'}]}
 ];
-let chats = loadLocal(), activeId = null, supabase = null, user = null, cloudMode = false, pendingDelete = null, refreshTimer = null, cloudChannel = null, applyingRemote = false;
-function loadLocal(){try{const x=JSON.parse(localStorage.getItem(LS_KEY));return Array.isArray(x)&&x.length?x:structuredClone(seed)}catch{return structuredClone(seed)}}
-function saveLocal(){localStorage.setItem(LS_KEY,JSON.stringify(chats))}
+function makeId(){return 'id_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8)}
+let clientId=localStorage.getItem(CID_KEY);if(!clientId){clientId=makeId();localStorage.setItem(CID_KEY,clientId)}
+let chats=loadCache(), activeId=null, pendingDelete=null, reloadTimer=null, loading=false;
+function loadCache(){try{const x=JSON.parse(localStorage.getItem(CACHE_KEY));return Array.isArray(x)?x:[]}catch{return[]}}
+function saveCache(){try{localStorage.setItem(CACHE_KEY,JSON.stringify(chats))}catch{}}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function initials(name){return name.split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase()}
 function latest(chat){return chat.messages?.[chat.messages.length-1]}
+function fmtTime(m){return m.sender&&m.created_at?new Date(m.created_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):(m.time||'')}
+function sideOf(m){return m.sender?(m.sender===clientId?'outgoing':'incoming'):(m.side==='outgoing'?'outgoing':'incoming')}
 function showToast(s){$('toast').textContent=s;$('toast').classList.add('show');setTimeout(()=>$('toast').classList.remove('show'),2600)}
 function avatarHtml(chat){return `<div class="avatar" style="background:${esc(chat.color||'#128c7e')}">${chat.photo?`<img src="${esc(chat.photo)}" alt="">`:esc(chat.avatar||initials(chat.name))}</div>`}
 function renderList(){
  const q=$('searchInput').value.trim().toLowerCase();
  const filtered=chats.filter(c=>c.name.toLowerCase().includes(q)||(latest(c)?.text||'').toLowerCase().includes(q));
- $('chatList').innerHTML=filtered.length?filtered.map(c=>{const m=latest(c);return `<button class="chat-row ${c.id===activeId?'active':''}" data-chat="${esc(c.id)}">${avatarHtml(c)}<div class="chat-meta"><div class="chat-line"><div class="chat-name">${esc(c.name)}</div><div class="chat-date">${esc(m?.time||c.date||'')}</div></div><div class="chat-preview">${m?esc(m.text):'<i>No messages</i>'}</div></div></button>`}).join(''):'<div class="empty-list">No conversations found.</div>';
+ $('chatList').innerHTML=filtered.length?filtered.map(c=>{const m=latest(c);return `<button class="chat-row ${c.id===activeId?'active':''}" data-chat="${esc(c.id)}">${avatarHtml(c)}<div class="chat-meta"><div class="chat-line"><div class="chat-name">${esc(c.name)}</div><div class="chat-date">${esc(m?fmtTime(m):(c.date||''))}</div></div><div class="chat-preview">${m?esc(m.text):'<i>No messages</i>'}</div></div></button>`}).join(''):'<div class="empty-list">No conversations found.</div>';
  document.querySelectorAll('[data-chat]').forEach(el=>el.addEventListener('click',()=>openChat(el.dataset.chat)));
 }
-function openChat(id){activeId=id;const c=chats.find(x=>x.id===id);if(!c)return;$('welcome').style.display='none';$('conversation').classList.add('show');$('activeAvatar').style.background=c.color||'#128c7e';$('activeAvatar').innerHTML=c.photo?`<img src="${esc(c.photo)}" alt="">`:esc(c.avatar||initials(c.name));$('activeName').textContent=c.name;$('activeStatus').textContent=cloudMode?'Synced conversation':'Conversation';$('app').classList.add('chat-open');renderList();renderMessages()}
-function renderMessages(){
+function openChat(id){activeId=id;const c=chats.find(x=>x.id===id);if(!c)return;$('welcome').style.display='none';$('conversation').classList.add('show');$('activeAvatar').style.background=c.color||'#128c7e';$('activeAvatar').innerHTML=c.photo?`<img src="${esc(c.photo)}" alt="">`:esc(c.avatar||initials(c.name));$('activeName').textContent=c.name;$('activeStatus').textContent='Public conversation';$('app').classList.add('chat-open');renderList();renderMessages()}
+function renderMessages(keepScroll){
  const c=chats.find(x=>x.id===activeId);if(!c)return;
- $('messages').innerHTML=`<div class="day-label">Messages</div>`+(c.messages||[]).map(m=>`<article class="message ${m.side==='outgoing'?'outgoing':'incoming'}" data-message="${esc(m.id)}"><div class="message-text">${esc(m.text)}</div><div class="message-tools"><button class="delete-btn" data-delete="${esc(m.id)}" title="Delete this message">Delete</button></div><div class="message-footer"><span>${esc(m.time||'')}</span>${m.side==='outgoing'?'<span>✓✓</span>':''}</div></article>`).join('');
- $('messages').scrollTop=$('messages').scrollHeight;
+ const box=$('messages'),atBottom=box.scrollHeight-box.scrollTop-box.clientHeight<80,prev=box.scrollTop;
+ box.innerHTML=`<div class="day-label">Messages</div>`+(c.messages||[]).map(m=>`<article class="message ${sideOf(m)}" data-message="${esc(m.id)}"><div class="message-text">${esc(m.text)}</div><div class="message-tools"><button class="delete-btn" data-delete="${esc(m.id)}" title="Delete this message">Delete</button></div><div class="message-footer"><span>${esc(fmtTime(m))}</span>${sideOf(m)==='outgoing'?'<span>✓✓</span>':''}</div></article>`).join('');
+ box.scrollTop=(keepScroll&&!atBottom)?prev:box.scrollHeight;
  document.querySelectorAll('[data-delete]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();askDelete({type:'message',chatId:activeId,messageId:b.dataset.delete})}));
 }
-function persist(){saveLocal();renderList();if(activeId)renderMessages();if(cloudMode && !applyingRemote)syncAll().catch(e=>{console.error(e);showToast('Cloud sync failed. Your local copy is still saved.')})}
-function nowTime(){return new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}
-function makeId(){return 'id_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8)}
+function refreshUI(keepScroll){
+ saveCache();renderList();
+ if(activeId){
+  if(chats.some(c=>c.id===activeId))openChatSoft(keepScroll);
+  else{activeId=null;$('conversation').classList.remove('show');$('welcome').style.display='';$('app').classList.remove('chat-open')}
+ }
+}
+function openChatSoft(keepScroll){const c=chats.find(x=>x.id===activeId);if(!c)return;$('activeAvatar').style.background=c.color||'#128c7e';$('activeAvatar').innerHTML=c.photo?`<img src="${esc(c.photo)}" alt="">`:esc(c.avatar||initials(c.name));$('activeName').textContent=c.name;renderMessages(keepScroll)}
+function sortChats(){const key=c=>{const m=latest(c);return new Date((m&&m.created_at)||c.created_at||0).getTime()};chats.sort((a,b)=>key(b)-key(a))}
+async function fetchAll(table,order){
+ let out=[],from=0;
+ for(;;){const {data,error}=await sb.from(table).select('*').order(order,{ascending:true}).range(from,from+999);if(error)throw error;out=out.concat(data);if(data.length<1000)break;from+=1000}
+ return out;
+}
+async function seedCloud(){
+ const base=Date.now()-3*86400000,contacts=[],msgs=[];
+ seed.forEach((c,i)=>{
+  const t=base-i*60000;
+  contacts.push({id:c.id,name:c.name,avatar:c.avatar,color:c.color,date:c.date,created_at:new Date(t).toISOString()});
+  c.messages.forEach((m,j)=>msgs.push({id:m.id,chat_id:c.id,text:m.text,time:m.time,side:m.side,sender:null,created_at:new Date(t+j*1000).toISOString()}));
+ });
+ let r=await sb.from('chatwave_contacts').upsert(contacts,{onConflict:'id',ignoreDuplicates:true});if(r.error)throw r.error;
+ r=await sb.from('chatwave_messages').upsert(msgs,{onConflict:'id',ignoreDuplicates:true});if(r.error)throw r.error;
+}
+async function loadCloud(keepScroll){
+ if(loading)return;loading=true;
+ try{
+  let [contacts,msgs]=await Promise.all([fetchAll('chatwave_contacts','created_at'),fetchAll('chatwave_messages','created_at')]);
+  if(!contacts.length&&!msgs.length){await seedCloud();[contacts,msgs]=await Promise.all([fetchAll('chatwave_contacts','created_at'),fetchAll('chatwave_messages','created_at')])}
+  const by={};msgs.forEach(m=>(by[m.chat_id]=by[m.chat_id]||[]).push(m));
+  chats=contacts.map(c=>({...c,photo:c.photo||undefined,messages:by[c.id]||[]}));
+  sortChats();refreshUI(keepScroll);
+ }catch(e){console.error(e);showToast('Could not reach the cloud. Showing last saved data.')}
+ finally{loading=false}
+}
+function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeout(()=>loadCloud(true),250)}
+function subscribe(){
+ sb.channel('chatwave-public')
+  .on('postgres_changes',{event:'*',schema:'public',table:'chatwave_messages'},scheduleReload)
+  .on('postgres_changes',{event:'*',schema:'public',table:'chatwave_contacts'},scheduleReload)
+  .subscribe();
+ setInterval(()=>{if(!document.hidden)loadCloud(true)},15000);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadCloud(true)});
+}
+async function run(promise,failMsg){const {error}=await promise;if(error){console.error(error);showToast(failMsg||'Cloud save failed.');loadCloud(true);return false}return true}
 $('searchInput').addEventListener('input',renderList);
-function sendMessage(){
- const input=$('messageInput'), text=input.value.trim(), c=chats.find(x=>x.id===activeId);
+async function sendMessage(){
+ const input=$('messageInput'),text=input.value.trim(),c=chats.find(x=>x.id===activeId);
  if(!text||!c){if(!c)showToast('Open a conversation before sending a message.');return}
- c.messages=c.messages||[];c.messages.push({id:makeId(),text,time:nowTime(),side:'outgoing'});
- input.value='';input.style.height='auto';persist();input.focus();
+ const m={id:makeId(),chat_id:c.id,text,time:null,side:'outgoing',sender:clientId,created_at:new Date().toISOString()};
+ c.messages.push(m);sortChats();input.value='';input.style.height='auto';refreshUI();input.focus();
+ await run(sb.from('chatwave_messages').insert(m),'Message not sent. Check your connection.');
 }
 $('messageForm').addEventListener('submit',e=>{e.preventDefault();sendMessage()});
 $('sendBtn').addEventListener('click',e=>{e.preventDefault();sendMessage()});
 $('messageInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()}});
 $('messageInput').addEventListener('input',()=>{const el=$('messageInput');el.style.height='auto';el.style.height=Math.min(el.scrollHeight,130)+'px'});
 $('backBtn').addEventListener('click',()=>{$('app').classList.remove('chat-open');activeId=null;renderList()});
-function askDelete(action){pendingDelete=action;if(action.type==='message'){$('confirmTitle').textContent='Delete this message?';$('confirmText').textContent='This message will be permanently removed from this conversation.'}else{$('confirmTitle').textContent='Delete all messages?';$('confirmText').textContent='All messages in this conversation will be removed. The contact will remain in your list.'}$('confirmModal').classList.add('open')}
+function askDelete(action){pendingDelete=action;if(action.type==='message'){$('confirmTitle').textContent='Delete this message?';$('confirmText').textContent='This message will be removed for everyone.'}else{$('confirmTitle').textContent='Delete all messages?';$('confirmText').textContent='All messages in this conversation will be removed for everyone. The contact will remain in the list.'}$('confirmModal').classList.add('open')}
 $('cancelDeleteBtn').addEventListener('click',()=>{$('confirmModal').classList.remove('open');pendingDelete=null});
-$('confirmDeleteBtn').addEventListener('click',async()=>{if(!pendingDelete)return;const a=pendingDelete,c=chats.find(x=>x.id===a.chatId);if(c){if(a.type==='message')c.messages=c.messages.filter(m=>m.id!==a.messageId);else c.messages=[];persist();showToast(a.type==='message'?'Message deleted':'Conversation messages cleared')}pendingDelete=null;$('confirmModal').classList.remove('open')});
+$('confirmDeleteBtn').addEventListener('click',async()=>{
+ if(!pendingDelete)return;const a=pendingDelete,c=chats.find(x=>x.id===a.chatId);pendingDelete=null;$('confirmModal').classList.remove('open');
+ if(!c)return;
+ if(a.type==='message'){c.messages=c.messages.filter(m=>m.id!==a.messageId);refreshUI();showToast('Message deleted');await run(sb.from('chatwave_messages').delete().eq('id',a.messageId))}
+ else{c.messages=[];refreshUI();showToast('Conversation messages cleared');await run(sb.from('chatwave_messages').delete().eq('chat_id',c.id))}
+});
 $('clearChatBtn').addEventListener('click',()=>{if(activeId)askDelete({type:'clear',chatId:activeId})});
-let editedPhoto = null, removeEditedPhoto = false;
+let editedPhoto=null,removeEditedPhoto=false;
 $('editContactBtn').addEventListener('click',()=>{
- const c=chats.find(x=>x.id===activeId); if(!c)return;
- $('editContactName').value=c.name; editedPhoto=c.photo||null; removeEditedPhoto=false;
- $('editContactPhoto').value=''; renderEditPhotoPreview(); $('editContactModal').classList.add('open');
+ const c=chats.find(x=>x.id===activeId);if(!c)return;
+ $('editContactName').value=c.name;editedPhoto=c.photo||null;removeEditedPhoto=false;
+ $('editContactPhoto').value='';renderEditPhotoPreview();$('editContactModal').classList.add('open');
 });
 function renderEditPhotoPreview(){
- const box=$('editPhotoPreview');
- box.innerHTML=editedPhoto?`<img src="${esc(editedPhoto)}" alt="Preview" style="width:52px;height:52px;object-fit:cover;border-radius:50%"><span>Current profile picture</span>`:'<span>No profile picture — initials will be shown.</span>';
+ $('editPhotoPreview').innerHTML=editedPhoto?`<img src="${esc(editedPhoto)}" alt="Preview" style="width:52px;height:52px;object-fit:cover;border-radius:50%"><span>Current profile picture</span>`:'<span>No profile picture — initials will be shown.</span>';
 }
 $('editContactPhoto').addEventListener('change',()=>{
- const file=$('editContactPhoto').files?.[0]; if(!file)return;
+ const file=$('editContactPhoto').files?.[0];if(!file)return;
  if(!file.type.startsWith('image/')){showToast('Please choose an image file.');return}
  if(file.size>12*1024*1024){showToast('Choose an image smaller than 12 MB.');$('editContactPhoto').value='';return}
  const reader=new FileReader();
  reader.onload=()=>{
   const img=new Image();
   img.onload=()=>{
-   const canvas=document.createElement('canvas'), max=320, scale=Math.min(1,max/Math.max(img.width,img.height));
+   const canvas=document.createElement('canvas'),max=256,scale=Math.min(1,max/Math.max(img.width,img.height));
    canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));
    canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
-   editedPhoto=canvas.toDataURL('image/jpeg',0.78);removeEditedPhoto=false;renderEditPhotoPreview();
+   editedPhoto=canvas.toDataURL('image/jpeg',0.72);removeEditedPhoto=false;renderEditPhotoPreview();
   };
   img.onerror=()=>showToast('Could not read that image.');
   img.src=reader.result;
@@ -199,67 +240,30 @@ $('editContactPhoto').addEventListener('change',()=>{
 });
 $('removeContactPhotoBtn').addEventListener('click',()=>{editedPhoto=null;removeEditedPhoto=true;$('editContactPhoto').value='';renderEditPhotoPreview()});
 $('cancelEditContactBtn').addEventListener('click',()=>$('editContactModal').classList.remove('open'));
-$('saveEditContactBtn').addEventListener('click',()=>{
+$('saveEditContactBtn').addEventListener('click',async()=>{
  const c=chats.find(x=>x.id===activeId);if(!c)return;
  const name=$('editContactName').value.trim();if(!name){$('editContactName').focus();return}
- c.name=name;
+ c.name=name;c.avatar=initials(name);
  if(editedPhoto)c.photo=editedPhoto;else if(removeEditedPhoto)delete c.photo;
- c.avatar=initials(name);
- $('editContactModal').classList.remove('open');persist();openChat(c.id);showToast('Contact updated');
+ $('editContactModal').classList.remove('open');refreshUI();showToast('Contact updated');
+ await run(sb.from('chatwave_contacts').update({name:c.name,avatar:c.avatar,photo:editedPhoto||null}).eq('id',c.id));
 });
-
 $('newChatBtn').addEventListener('click',()=>$('newChatModal').classList.add('open'));
 $('cancelNewChatBtn').addEventListener('click',()=>$('newChatModal').classList.remove('open'));
-$('createChatBtn').addEventListener('click',()=>{const name=$('newChatName').value.trim();if(!name){$('newChatName').focus();return}const first=$('newChatPreview').value.trim();const c={id:makeId(),name,avatar:initials(name),color:'#128c7e',date:new Date().toLocaleDateString(),messages:first?[{id:makeId(),text:first,time:nowTime(),side:'incoming'}]:[]};chats.unshift(c);$('newChatName').value='';$('newChatPreview').value='';$('newChatModal').classList.remove('open');persist();openChat(c.id)});
-$('settingsBtn').addEventListener('click',()=>{$('settingsModal').classList.add('open');$('supabaseUrl').value=localStorage.getItem('chatwave-supabase-url')||'';$('supabaseKey').value=localStorage.getItem('chatwave-supabase-key')||'';$('connectionStatus').textContent=cloudMode?`Connected as ${user?.email||'user'}.`:'Local demo mode is active.'});
-$('closeSettingsBtn').addEventListener('click',()=>$('settingsModal').classList.remove('open'));
-async function syncAll(){
- if(!cloudMode||!user)return;
- // Replace the current user's cloud snapshot transactionally at the application level.
- const {error}=await supabase.from('chatwave_snapshots').upsert({user_id:user.id,payload:chats,updated_at:new Date().toISOString()},{onConflict:'user_id'});
- if(error)throw error;
-}
-async function loadCloud(){
- const {data,error}=await supabase.from('chatwave_snapshots').select('payload').eq('user_id',user.id).maybeSingle();
- if(error)throw error;
- if(data?.payload&&Array.isArray(data.payload)&&data.payload.length){chats=data.payload;saveLocal()}else await syncAll();
-}
-function subscribeCloud(){
- if(!cloudMode || !supabase || !user) return;
- if(cloudChannel) supabase.removeChannel(cloudChannel);
- cloudChannel = supabase.channel('chatwave-snapshot-'+user.id)
-  .on('postgres_changes',{event:'UPDATE',schema:'public',table:'chatwave_snapshots',filter:'user_id=eq.'+user.id},payload=>{
-    const remote = payload.new?.payload;
-    if(!Array.isArray(remote)) return;
-    applyingRemote = true;
-    chats = remote;
-    saveLocal();
-    renderList();
-    if(activeId && !chats.some(c=>c.id===activeId)) { activeId=null; $('conversation').classList.remove('show'); $('welcome').style.display='flex'; }
-    if(activeId) openChat(activeId);
-    applyingRemote = false;
-    showToast('Conversations synced from another device');
-  })
-  .subscribe(status=>{ if(status==='CHANNEL_ERROR') console.warn('Supabase Realtime subscription failed'); });
-}
-$('connectBtn').addEventListener('click',async()=>{
- const url=$('supabaseUrl').value.trim(),key=$('supabaseKey').value.trim(),email=$('authEmail').value.trim(),password=$('authPassword').value;
- if(!url||!key||!email||!password){$('connectionStatus').textContent='Enter the project URL, publishable/anon key, email, and password.';return}
- try{
-  $('connectionStatus').textContent='Connecting…';
-  localStorage.setItem('chatwave-supabase-url',url);localStorage.setItem('chatwave-supabase-key',key);
-  supabase=window.supabase.createClient(url,key);
-  let res=await supabase.auth.signInWithPassword({email,password});
-  if(res.error){const signup=await supabase.auth.signUp({email,password});if(signup.error)throw signup.error;if(!signup.data.session){$('connectionStatus').textContent='Account created. Check your email to confirm it, then sign in here.';return}res=signup}
-  user=res.data.user;if(!user)throw new Error('Could not authenticate. Check your credentials.');
-  cloudMode=true;await loadCloud();subscribeCloud();$('connectionStatus').textContent=`Connected and synced as ${user.email||'user'}.`;if(activeId)openChat(activeId);renderList();showToast('Supabase connected');setTimeout(()=>$('settingsModal').classList.remove('open'),800);
- }catch(err){console.error(err);cloudMode=false;$('connectionStatus').textContent=err.message||'Connection failed. Check your settings and SQL setup.'}
+$('createChatBtn').addEventListener('click',async()=>{
+ const name=$('newChatName').value.trim();if(!name){$('newChatName').focus();return}
+ const first=$('newChatPreview').value.trim(),now=new Date().toISOString();
+ const c={id:makeId(),name,avatar:initials(name),color:'#128c7e',date:new Date().toLocaleDateString(),created_at:now,messages:[]};
+ let fm=null;if(first){fm={id:makeId(),chat_id:c.id,text:first,time:null,side:'incoming',sender:null,created_at:now};c.messages.push(fm)}
+ chats.unshift(c);sortChats();$('newChatName').value='';$('newChatPreview').value='';$('newChatModal').classList.remove('open');
+ refreshUI();openChat(c.id);
+ const ok=await run(sb.from('chatwave_contacts').insert({id:c.id,name:c.name,avatar:c.avatar,color:c.color,date:c.date,created_at:now}),'Conversation not saved.');
+ if(ok&&fm)await run(sb.from('chatwave_messages').insert(fm));
 });
-$('signOutBtn').addEventListener('click',async()=>{if(supabase){if(cloudChannel)await supabase.removeChannel(cloudChannel);cloudChannel=null;await supabase.auth.signOut()}cloudMode=false;user=null;$('connectionStatus').textContent='Signed out. Local demo mode is active.';showToast('Signed out of cloud sync')});
 $('confirmModal').addEventListener('click',e=>{if(e.target===$('confirmModal')){$('confirmModal').classList.remove('open');pendingDelete=null}});
 $('newChatModal').addEventListener('click',e=>{if(e.target===$('newChatModal'))$('newChatModal').classList.remove('open')});
 $('editContactModal').addEventListener('click',e=>{if(e.target===$('editContactModal'))$('editContactModal').classList.remove('open')});
-renderList();
+renderList();loadCloud().then(subscribe);
 })();
 </script>
 </body>
